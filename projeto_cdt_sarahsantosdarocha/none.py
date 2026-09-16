@@ -1,239 +1,315 @@
+import json
+import random
+import sqlite3
+import sys
+import time
+import threading
 import tkinter as tk
-from tkinter import ttk
+from tkinter import messagebox, ttk
+from faker import Faker
 
-# --- CORES DA PALETA ---
-BG_DARK = "#FFF0F5"       # Rosa Bebê (Fundo Geral)
-PANEL_BG = "#FFFACD"      # Amarelo Pastel (Painéis / Cards)
-CARD_BG = "#FEF9E7"       # Amarelo Pastel mais claro (Cards)
-ACCENT_PURPLE = "#D8BFD8"  # Roxo Claro (Botões e Destaques)
-HOVER_PURPLE = "#E6E6FA"   # Roxo bem leve (Hover / Filtros inativos)
-TEXT_COLOR = "#4A3B52"     # Roxo bem escuro para texto
-TEXT_MUTED = "#8A7A93"     # Roxo acinzentado para subtítulos
+# --- BANCO DE DADOS (SQLite + Hits Pop Reais + Faker) ---
 
-class SpotifyPastelApp(tk.Tk):
-    def __init__(self):
-        super().__init__()
-
-        self.title("Meu Player - Estilo Pastel")
-        self.geometry("700x700")
-        self.geometry("700x700")
-        self.configure(bg=BG_DARK)
-
-        # Configuração de Estilos TTK
-        self.style = ttk.Style()
-        self.style.theme_use("clam")
-
-        # Construção dos componentes da interface
-        self.create_top_bar()
-        self.create_main_container()
-        self.create_bottom_player()
-
-    def create_top_bar(self):
-        """Barra Superior: Busca e Perfil"""
-        top_frame = tk.Frame(self, bg=BG_DARK, height=60, padding=10)
-        top_frame.pack(side="top", fill="x", padx=10, pady=5)
-
-        # Ícone / Botão Home
-        home_btn = tk.Button(
-            top_frame, text="🏠", font=("Arial", 12),
-            bg=ACCENT_PURPLE, fg=TEXT_COLOR, bd=0, relief="flat",
-            width=4, height=1, cursor="hand2"
+def inicializar_banco():
+    conn = sqlite3.connect("musicas_pop.db")
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS musicas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            titulo TEXT NOT NULL,
+            artista TEXT NOT NULL,
+            humor TEXT NOT NULL,
+            duracao TEXT NOT NULL
         )
-        home_btn.pack(side="left", padx=(0, 10))
-
-        # Barra de Pesquisa
-        search_frame = tk.Frame(top_frame, bg=PANEL_BG, bd=1, relief="solid")
-        search_frame.pack(side="left", fill="x", expand=True, padx=10)
-
-        search_icon = tk.Label(search_frame, text="🔍", bg=PANEL_BG, fg=TEXT_MUTED)
-        search_icon.pack(side="left", padx=8)
-
-        search_entry = tk.Entry(
-            search_frame, bg=PANEL_BG, fg=TEXT_COLOR,
-            font=("Arial", 11), bd=0, insertbackground=TEXT_COLOR
-        )
-        search_entry.insert(0, "O que você quer ouvir?")
-        search_entry.pack(side="left", fill="x", expand=True, py=6)
-
-        # Botões da direita
-        premium_btn = tk.Button(
-            top_frame, text="Ver planos Premium", font=("Arial", 9, "bold"),
-            bg=ACCENT_PURPLE, fg=TEXT_COLOR, bd=0, relief="flat",
-            padx=12, pady=6, cursor="hand2"
-        )
-        premium_btn.pack(side="right", padx=5)
-
-        profile_btn = tk.Button(
-            top_frame, text="👤", font=("Arial", 11),
-            bg=PANEL_BG, fg=TEXT_COLOR, bd=0, relief="flat",
-            width=3, height=1, cursor="hand2"
-        )
-        profile_btn.pack(side="right", padx=5)
-
-    def create_main_container(self):
-        """Container do Corpo (Barra Lateral + Área Principal)"""
-        body_frame = tk.Frame(self, bg=BG_DARK)
-        body_frame.pack(side="top", fill="both", expand=True, padx=10, pady=5)
-
-        # ---------------- BARRA LATERAL (ESQUERDA) ----------------
-        sidebar = tk.Frame(body_frame, bg=PANEL_BG, width=280)
-        sidebar.pack(side="left", fill="y", padx=(0, 10))
-        sidebar.pack_propagate(False)
-
-        # Cabeçalho Biblioteca
-        lib_header = tk.Frame(sidebar, bg=PANEL_BG)
-        lib_header.pack(fill="x", padx=15, pady=15)
-
-        lib_title = tk.Label(
-            lib_header, text="📚 Sua Biblioteca", font=("Arial", 12, "bold"),
-            bg=PANEL_BG, fg=TEXT_COLOR
-        )
-        lib_title.pack(side="left")
-
-        add_btn = tk.Label(lib_header, text="＋", font=("Arial", 14, "bold"), bg=PANEL_BG, fg=TEXT_MUTED, cursor="hand2")
-        add_btn.pack(side="right")
-
-        # Filtros da Biblioteca
-        filter_frame = tk.Frame(sidebar, bg=PANEL_BG)
-        filter_frame.pack(fill="x", padx=15, pady=(0, 10))
-
-        for tag in ["Playlists", "Artistas"]:
-            btn = tk.Label(
-                filter_frame, text=tag, font=("Arial", 9, "bold"),
-                bg=HOVER_PURPLE, fg=TEXT_COLOR, padx=10, pady=4, cursor="hand2"
-            )
-            btn.pack(side="left", padx=(0, 5))
-
-        # Lista de Playlists na Lateral
-        playlists = [
-            ("Anitta", "Playlist • Sarah"),
-            ("Músicas Curtidas", "Playlist • 4 músicas"),
-            ("✨ Vôlei ✨", "Playlist • Jessy"),
-            ("hokku + sarah", "Playlist • Spotify")
+    """)
+    
+    cursor.execute("SELECT COUNT(*) FROM musicas")
+    if cursor.fetchone()[0] == 0:
+        # Base inicial com Hits Pop Populares / Pop em Alta
+        hits_pop = [
+            # Feliz
+            ("Espresso", "Sabrina Carpenter", "feliz", "2:55"),
+            ("Cruel Summer", "Taylor Swift", "feliz", "2:58"),
+            ("Dance The Night", "Dua Lipa", "feliz", "2:56"),
+            ("Greedy", "Tate McRae", "feliz", "2:11"),
+            ("PLEASE PLEASE PLEASE", "Sabrina Carpenter", "feliz", "3:06"),
+            # Triste
+            ("BIRDS OF A FEATHER", "Billie Eilish", "triste", "3:30"),
+            ("drivers license", "Olivia Rodrigo", "triste", "4:02"),
+            ("Glimpse of Us", "Joji", "triste", "3:53"),
+            ("vampire", "Olivia Rodrigo", "triste", "3:39"),
+            ("Pilantra", "Jão, Anitta", "triste", "3:10"),
+            # Animado / Festa
+            ("Houdini", "Dua Lipa", "animado", "3:05"),
+            ("Super Shy", "NewJeans", "animado", "2:34"),
+            ("Alibi", "Sevdaliza, Pabllo Vittar, Yseult", "animado", "2:41"),
+            ("Von dutch", "Charli xcx", "animado", "2:44"),
+            ("FUNK RAVE", "Anitta", "animado", "2:27"),
+            # Relaxado
+            ("WILDFLOWER", "Billie Eilish", "relaxado", "4:21"),
+            ("Golden Hour", "JVKE", "relaxado", "3:29"),
+            ("Saturn", "SZA", "relaxado", "3:06"),
+            ("Snooze", "SZA", "relaxado", "3:21"),
+            ("Idiota", "Jão", "relaxado", "3:04"),
+            # Focado
+            ("Blinding Lights", "The Weeknd", "focado", "3:20"),
+            ("As It Was", "Harry Styles", "focado", "2:47"),
+            ("Starboy", "The Weeknd", "focado", "3:50"),
+            ("Midnight Rain", "Taylor Swift", "focado", "2:54"),
+            ("Flowers", "Miley Cyrus", "focado", "3:20")
         ]
+        
+        cursor.executemany("INSERT INTO musicas (titulo, artista, humor, duracao) VALUES (?, ?, ?, ?)", hits_pop)
+        
+        # Complementa com Faker para simular novas faixas populares
+        fake = Faker('pt_BR')
+        humores = ["feliz", "triste", "animado", "relaxado", "focado"]
+        for _ in range(15):
+            titulo = f"{fake.word().capitalize()} {fake.word()}"
+            artista = fake.name()
+            humor = random.choice(humores)
+            duracao = f"{random.randint(2, 4)}:{random.randint(10, 59):02d}"
+            cursor.execute("INSERT INTO musicas (titulo, artista, humor, duracao) VALUES (?, ?, ?, ?)", (titulo, artista, humor, duracao))
+            
+        conn.commit()
+    conn.close()
 
-        for title, subtitle in playlists:
-            item = tk.Frame(sidebar, bg=PANEL_BG, cursor="hand2")
-            item.pack(fill="x", padx=10, pady=4)
+def buscar_playlist_por_humor(humor):
+    conn = sqlite3.connect("musicas_pop.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT titulo, artista, duracao FROM musicas WHERE humor = ? ORDER BY RANDOM() LIMIT 6", (humor.lower(),))
+    resultados = cursor.fetchall()
+    conn.close()
+    return resultados
 
-            # Capa (Placeholder Roxo)
-            cover = tk.Frame(item, bg=ACCENT_PURPLE, width=40, height=40)
-            cover.pack(side="left", padx=(5, 10))
-            cover.pack_propagate(False)
+def exportar_para_json(humor, playlist):
+    dados = {
+        "humor": humor,
+        "gerado_em": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "playlist": [{"titulo": m[0], "artista": m[1], "duracao": m[2]} for m in playlist]
+    }
+    nome_arquivo = f"playlist_pop_{humor}.json"
+    with open(nome_arquivo, "w", encoding="utf-8") as f:
+        json.dump(dados, f, ensure_ascii=False, indent=4)
+    return nome_arquivo
 
-            info = tk.Frame(item, bg=PANEL_BG)
-            info.pack(side="left", fill="both")
+# --- INTERFACE GRÁFICA ESTILO WEB APP / CORREIOS-SPOTIFY (GUI) ---
 
-            t_lbl = tk.Label(info, text=title, font=("Arial", 9, "bold"), bg=PANEL_BG, fg=TEXT_COLOR, anchor="w")
-            t_lbl.pack(fill="x")
-            s_lbl = tk.Label(info, text=subtitle, font=("Arial", 8), bg=PANEL_BG, fg=TEXT_MUTED, anchor="w")
-            s_lbl.pack(fill="x")
+class WebAppMusicaGUI:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("VibeStream - Pop Music Assistant")
+        self.root.geometry("850x600")
+        self.root.configure(bg="#F4F6F9")
+        
+        # Estilos de Cores (Azul Correios + Amarelo Destaque + Layout Spotify)
+        self.COLOR_NAV = "#004182"       # Azul Escuro
+        self.COLOR_BANNER = "#0072C6"    # Azul Médio
+        self.COLOR_ACCENT = "#FFCC00"    # Amarelo
+        self.COLOR_TEXT_LIGHT = "#FFFFFF"
+        self.COLOR_BG_CARD = "#FFFFFF"
+        
+        self.tocando = False
+        self.progresso_val = 0
+        self.musica_atual = None
 
-        # ---------------- CONTEÚDO PRINCIPAL (DIREITA) ----------------
-        main_content = tk.Frame(body_frame, bg=PANEL_BG)
-        main_content.pack(side="right", fill="both", expand=True)
+        self.criar_layout()
 
-        # Filtros Principais (Tudo, Músicas, Podcasts)
-        main_filters = tk.Frame(main_content, bg=PANEL_BG)
-        main_filters.pack(fill="x", padx=20, pady=15)
+    def criar_layout(self):
+        # 1. Barra de Navegação Superior (Header Web)
+        nav_bar = tk.Frame(self.root, bg=self.COLOR_NAV, height=50)
+        nav_bar.pack(fill=tk.X, side=tk.TOP)
+        
+        lbl_logo = tk.Label(nav_bar, text="🎵 VibeStream", font=("Segoe UI", 14, "bold"), bg=self.COLOR_NAV, fg=self.COLOR_TEXT_LIGHT)
+        lbl_logo.pack(side=tk.LEFT, padx=20, pady=10)
 
-        for i, tag in enumerate(["Tudo", "Músicas", "Podcasts"]):
-            bg_c = ACCENT_PURPLE if i == 0 else HOVER_PURPLE
-            btn = tk.Label(
-                main_filters, text=tag, font=("Arial", 9, "bold"),
-                bg=bg_c, fg=TEXT_COLOR, padx=12, pady=5, cursor="hand2"
+        lbl_sub = tk.Label(nav_bar, text="O mês do Pop com as melhores vibes!", font=("Segoe UI", 9, "italic"), bg=self.COLOR_NAV, fg=self.COLOR_ACCENT)
+        lbl_sub.pack(side=tk.LEFT, padx=10)
+
+        # 2. Banner Promocional estilo App Web
+        banner = tk.Frame(self.root, bg=self.COLOR_BANNER, height=80)
+        banner.pack(fill=tk.X, side=tk.TOP)
+        
+        lbl_banner_title = tk.Label(banner, text="SINTA O RITMO DO SEU DIA!", font=("Segoe UI", 16, "bold"), bg=self.COLOR_BANNER, fg=self.COLOR_TEXT_LIGHT)
+        lbl_banner_title.pack(anchor="w", padx=25, pt=10)
+        
+        lbl_banner_desc = tk.Label(banner, text="Escolha seu humor e gere uma playlist pop exclusiva instantaneamente.", font=("Segoe UI", 10), bg=self.COLOR_BANNER, fg=self.COLOR_TEXT_LIGHT)
+        lbl_banner_desc.pack(anchor="w", padx=25, pb=10)
+
+        # 3. Conteúdo Principal (Sidebar + Playlist Area)
+        main_container = tk.Frame(self.root, bg="#F4F6F9")
+        main_container.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
+
+        # Sidebar (Seleção de Humor)
+        sidebar = tk.Frame(main_container, bg=self.COLOR_BG_CARD, width=220, relief=tk.RAISED, bd=1)
+        sidebar.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
+
+        lbl_sidebar = tk.Label(sidebar, text="Qual é a sua vibe?", font=("Segoe UI", 11, "bold"), bg=self.COLOR_BG_CARD, fg="#333333")
+        lbl_sidebar.pack(pady=15, padx=10, anchor="w")
+
+        self.humor_var = tk.StringVar(value="feliz")
+        humores = [("😊 Feliz / High", "feliz"), ("😢 Bad / Triste", "triste"), ("🔥 Animação / Festa", "animado"), ("☕ Relax / Chill", "relaxado"), ("🎧 Foco / Work", "focado")]
+
+        for texto, valor in humores:
+            rb = tk.Radiobutton(
+                sidebar, text=texto, value=valor, variable=self.humor_var,
+                font=("Segoe UI", 10), bg=self.COLOR_BG_CARD, activebackground=self.COLOR_BG_CARD,
+                selectcolor=self.COLOR_ACCENT, anchor="w", indicatoron=0, bd=0, padx=10, pady=8
             )
-            btn.pack(side="left", padx=(0, 8))
+            rb.pack(fill=tk.X, padx=10, pady=3)
 
-        # Título da Seção
-        sec_title = tk.Label(
-            main_content, text="Singles e álbuns que todo mundo gosta",
-            font=("Arial", 14, "bold"), bg=PANEL_BG, fg=TEXT_COLOR
+        btn_gerar = tk.Button(
+            sidebar, text="⚡ GERAR PLAYLIST", command=self.gerar_playlist,
+            bg=self.COLOR_ACCENT, fg="#000", font=("Segoe UI", 10, "bold"), bd=0, cursor="hand2", pady=8
         )
-        sec_title.pack(anchor="w", padx=20, pady=(10, 15))
+        btn_gerar.pack(fill=tk.X, padx=10, pady=20)
 
-        # Grid de Cards de Álbuns
-        cards_frame = tk.Frame(main_content, bg=PANEL_BG)
-        cards_frame.pack(fill="x", padx=20)
+        # Área da Playlist (Tabela Estilo Web App)
+        playlist_area = tk.Frame(main_container, bg=self.COLOR_BG_CARD, relief=tk.RAISED, bd=1)
+        playlist_area.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
-        albums = [
-            ("Nada Como um Dia...", "Racionais MC's"),
-            ("Churrasquinho 3", "Grupo Menos É Mais"),
-            ("Tubarões (Ao Vivo)", "Diego & Victor Hugo"),
-            ("Bem-Vindo ao Meu...", "Wesley Safadão"),
-            ("Manifesto Musical 2", "Henrique & Juliano")
-        ]
+        header_pl = tk.Frame(playlist_area, bg=self.COLOR_BG_CARD)
+        header_pl.pack(fill=tk.X, padx=15, pady=10)
 
-        for title, artist in albums:
-            card = tk.Frame(cards_frame, bg=CARD_BG, width=130, height=190, relief="solid", bd=1)
-            card.pack(side="left", padx=8)
-            card.pack_propagate(False)
+        lbl_pl_title = tk.Label(header_pl, text="🎶 Músicas Recomendadas", font=("Segoe UI", 12, "bold"), bg=self.COLOR_BG_CARD, fg="#333")
+        lbl_pl_title.pack(side=tk.LEFT)
 
-            # Capa Imagem Placeholder
-            img_box = tk.Frame(card, bg=ACCENT_PURPLE, height=110)
-            img_box.pack(fill="x", padx=8, pady=8)
+        btn_export = tk.Button(
+            header_pl, text="💾 Exportar JSON", command=self.salvar_json,
+            bg=self.COLOR_NAV, fg="white", font=("Segoe UI", 9, "bold"), bd=0, padx=10, cursor="hand2"
+        )
+        btn_export.pack(side=tk.RIGHT)
 
-            icon_lbl = tk.Label(img_box, text="🎵", font=("Arial", 24), bg=ACCENT_PURPLE, fg=TEXT_COLOR)
-            icon_lbl.place(relx=0.5, rely=0.5, anchor="center")
+        # Tabela (Treeview)
+        style = ttk.Style()
+        style.theme_use("clam")
+        style.configure("Treeview", font=("Segoe UI", 10), rowheight=30, background="#FFFFFF", fieldbackground="#FFFFFF", borderwidth=0)
+        style.configure("Treeview.Heading", font=("Segoe UI", 10, "bold"), background="#EBF3FA", foreground=self.COLOR_NAV)
+        style.map("Treeview", background=[("selected", self.COLOR_BANNER)], foreground=[("selected", "#FFFFFF")])
 
-            # Título e Artista
-            t_lbl = tk.Label(card, text=title, font=("Arial", 8, "bold"), bg=CARD_BG, fg=TEXT_COLOR, wraplength=110, justify="left")
-            t_lbl.pack(anchor="w", padx=8)
+        self.tree = ttk.Treeview(playlist_area, columns=("Titulo", "Artista", "Duracao"), show="headings", height=8)
+        self.tree.heading("Titulo", text="MÚSICA")
+        self.tree.heading("Artista", text="ARTISTA")
+        self.tree.heading("Duracao", text="DURAÇÃO")
+        
+        self.tree.column("Titulo", width=200)
+        self.tree.column("Artista", width=150)
+        self.tree.column("Duracao", width=70, anchor="center")
+        
+        self.tree.pack(fill=tk.BOTH, expand=True, padx=15, pady=(0, 15))
+        self.tree.bind("<Double-1>", self.tocar_musica_selecionada)
 
-            a_lbl = tk.Label(card, text=artist, font=("Arial", 8), bg=CARD_BG, fg=TEXT_MUTED, wraplength=110, justify="left")
-            a_lbl.pack(anchor="w", padx=8, pady=(2, 0))
+        # 4. Player de Música Flutuante / Rodapé (Estilo Spotify/YT Music)
+        player_bar = tk.Frame(self.root, bg=self.COLOR_NAV, height=70)
+        player_bar.pack(fill=tk.X, side=tk.BOTTOM)
 
-    def create_bottom_player(self):
-        """Barra Inferior do Player de Música"""
-        player_frame = tk.Frame(self, bg=BG_DARK, height=70)
-        player_frame.pack(side="bottom", fill="x", padx=10, pady=5)
+        self.lbl_now_playing = tk.Label(player_bar, text="Nenhuma música tocando", font=("Segoe UI", 9, "bold"), bg=self.COLOR_NAV, fg=self.COLOR_TEXT_LIGHT)
+        self.lbl_now_playing.pack(anchor="w", padx=20, pt=5)
 
-        # Esquerda: Informações da música atual
-        track_info = tk.Frame(player_frame, bg=BG_DARK)
-        track_info.pack(side="left", padx=10)
+        player_controls = tk.Frame(player_bar, bg=self.COLOR_NAV)
+        player_controls.pack(fill=tk.X, padx=20, pady=2)
 
-        track_title = tk.Label(track_info, text="Nome da Música", font=("Arial", 9, "bold"), bg=BG_DARK, fg=TEXT_COLOR)
-        track_title.pack(anchor="w")
-        artist_title = tk.Label(track_info, text="Nome do Artista", font=("Arial", 8), bg=BG_DARK, fg=TEXT_MUTED)
-        artist_title.pack(anchor="w")
+        self.btn_play = tk.Button(player_controls, text="▶ PLAY", command=self.toggle_play, bg=self.COLOR_ACCENT, fg="#000", font=("Segoe UI", 8, "bold"), bd=0, padx=10)
+        self.btn_play.pack(side=tk.LEFT, padx=(0, 10))
 
-        # Centro: Controles e Barra de Progresso
-        controls_frame = tk.Frame(player_frame, bg=BG_DARK)
-        controls_frame.pack(side="left", fill="x", expand=True)
+        self.progress = ttk.Progressbar(player_controls, orient="horizontal", mode="determinate")
+        self.progress.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-        buttons_box = tk.Frame(controls_frame, bg=BG_DARK)
-        buttons_box.pack()
+        self.playlist_atual = []
+        self.gerar_playlist()
 
-        for btn_text in ["🔀", "⏮", "▶", "⏭", "🔁"]:
-            b = tk.Button(
-                buttons_box, text=btn_text, font=("Arial", 10),
-                bg=BG_DARK, fg=TEXT_COLOR, bd=0, activebackground=BG_DARK, cursor="hand2"
-            )
-            b.pack(side="left", padx=8)
+    # --- AUTOMAÇÃO & PLAYER SIMULADO ---
 
-        # Barra de Progresso
-        progress_box = tk.Frame(controls_frame, bg=BG_DARK)
-        progress_box.pack(fill="x", padx=50, pady=(2, 0))
+    def gerar_playlist(self):
+        humor = self.humor_var.get()
+        self.playlist_atual = buscar_playlist_por_humor(humor)
+        
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+            
+        for m in self.playlist_atual:
+            self.tree.insert("", tk.END, values=(m[0], m[1], m[2]))
+            
+        # Seleciona automaticamente a primeira música ao gerar
+        if self.playlist_atual:
+            primeiro = self.tree.get_children()[0]
+            self.tree.selection_set(primeiro)
+            self.preparar_musica(self.playlist_atual[0])
 
-        time_start = tk.Label(progress_box, text="0:00", font=("Arial", 7), bg=BG_DARK, fg=TEXT_MUTED)
-        time_start.pack(side="left")
+    def preparar_musica(self, musica):
+        self.musica_atual = musica
+        self.lbl_now_playing.config(text=f"🎧 Tocando agora: {musica[0]} - {musica[1]} ({musica[2]})")
+        self.progresso_val = 0
+        self.progress["value"] = 0
 
-        progress_bar = ttk.Progressbar(progress_box, orient="horizontal", mode="determinate", value=30)
-        progress_bar.pack(side="left", fill="x", expand=True, padx=5)
+    def tocar_musica_selecionada(self, event):
+        item = self.tree.selection()
+        if item:
+            valores = self.tree.item(item, "values")
+            self.preparar_musica(valores)
+            if not self.tocando:
+                self.toggle_play()
 
-        time_end = tk.Label(progress_box, text="3:45", font=("Arial", 7), bg=BG_DARK, fg=TEXT_MUTED)
-        time_end.pack(side="right")
+    def toggle_play(self):
+        if not self.musica_atual and self.playlist_atual:
+            self.preparar_musica(self.playlist_atual[0])
 
-        # Direita: Controle de Volume
-        volume_frame = tk.Frame(player_frame, bg=BG_DARK)
-        volume_frame.pack(side="right", padx=10)
+        if not self.tocando:
+            self.tocando = True
+            self.btn_play.config(text="⏸ PAUSE")
+            threading.Thread(target=self._simular_player, daemon=True).start()
+        else:
+            self.tocando = False
+            self.btn_play.config(text="▶ PLAY")
 
-        vol_icon = tk.Label(volume_frame, text="🔊", bg=BG_DARK, fg=TEXT_COLOR)
-        vol_icon.pack(side="left", padx=2)
+    def _simular_player(self):
+        while self.tocando and self.progresso_val < 100:
+            time.sleep(0.3)
+            self.progresso_val += 2
+            self.progress["value"] = self.progresso_val
+        if self.progresso_val >= 100:
+            self.tocando = False
+            self.btn_play.config(text="▶ PLAY")
+            self.progresso_val = 0
 
-        vol_bar = ttk.Scale(volume_frame, from_=0, to=100, value=70, orient="horizontal", length=80)
-        vol_bar.pack(side="left")
+    def salvar_json(self):
+        humor = self.humor_var.get()
+        if self.playlist_atual:
+            arq = exportar_para_json(humor, self.playlist_atual)
+            messagebox.showinfo("Sucesso", f"Playlist exportada para o arquivo '{arq}' com sucesso!")
+
+# --- MODO CLI INTERATIVO ---
+
+def rodar_cli():
+    print("\n=======================================================")
+    print(" 🎵 VIBESTREAM POP ASSISTANT (MODO CLI) ")
+    print("=======================================================")
+    humores = ["feliz", "triste", "animado", "relaxado", "focado"]
+    print("Escolha seu humor atual:", ", ".join(humores))
+    
+    humor = input("👉 Seu humor agora: ").strip().lower()
+    if humor not in humores:
+        humor = "feliz"
+        
+    playlist = buscar_playlist_por_humor(humor)
+    print(f"\n🔥 HITS POP EM ALTA PARA SUA VIBE [{humor.upper()}]:")
+    print("-" * 55)
+    for idx, (t, a, d) in enumerate(playlist, 1):
+        print(f"{idx:02d}. 🎶 {t:<25} | 👤 {a:<20} | ⏱️ {d}")
+    print("-" * 55)
+    
+    salvar = input("\n💾 Exportar playlist em JSON? (s/n): ").strip().lower()
+    if salvar == 's':
+        arq = exportar_para_json(humor, playlist)
+        print(f"✅ Arquivo '{arq}' criado!")
+
+# --- EXECUÇÃO PRINCIPAL ---
 
 if __name__ == "__main__":
-    app = SpotifyPastelApp()
-    app.mainloop()
+    inicializar_banco()
+    if len(sys.argv) > 1 and sys.argv[1] == "--cli":
+        rodar_cli()
+    else:
+        root = tk.Tk()
+        app = WebAppMusicaGUI(root)
+        root.mainloop()
