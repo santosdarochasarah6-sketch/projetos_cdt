@@ -297,18 +297,10 @@ def index():
 
 @app.route("/cadastro", methods=["GET", "POST"])
 def cadastro():
-
     if request.method == "POST":
-
-        nome = request.form.get(
-            "nome",
-            ""
-        ).strip()
-
-        usuario = request.form.get(
-            "usuario",
-            ""
-        ).strip()
+        nome = request.form.get("nome", "").strip()
+        usuario = request.form.get("usuario", "").strip()
+        # ... restante do código
 
         senha = request.form.get(
             "senha",

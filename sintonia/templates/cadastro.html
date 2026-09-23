@@ -4,7 +4,6 @@
 Cadastro | Sintonia
 {% endblock %}
 
-
 {% block content %}
 
 <section class="auth-card">
@@ -21,10 +20,11 @@ Cadastro | Sintonia
     <p class="error-message">
         {{ erro }}
     </p>
+
     {% endif %}
 
-
     <form
+        action="{{ url_for('cadastro') }}"
         method="POST"
         class="form"
     >
@@ -41,7 +41,6 @@ Cadastro | Sintonia
             required
         >
 
-
         <label for="usuario">
             Usuário
         </label>
@@ -53,7 +52,6 @@ Cadastro | Sintonia
             autocomplete="username"
             required
         >
-
 
         <label for="senha">
             Senha
@@ -67,7 +65,6 @@ Cadastro | Sintonia
             required
         >
 
-
         <label for="confirmar_senha">
             Confirmar senha
         </label>
@@ -80,7 +77,6 @@ Cadastro | Sintonia
             required
         >
 
-
         <button
             class="primary-button"
             type="submit"
@@ -90,15 +86,11 @@ Cadastro | Sintonia
 
     </form>
 
-
     <p class="switch-link">
-
         Já possui uma conta?
-
         <a href="{{ url_for('login') }}">
             Voltar para o login
         </a>
-
     </p>
 
 </section>
