@@ -3,6 +3,7 @@ import json
 import sqlite3
 import secrets
 import unicodedata
+from datetime import datetime
 from difflib import SequenceMatcher
 
 import requests
@@ -41,7 +42,8 @@ SCOPE = (
     "user-read-private"
 )
 
-DATABASE = "database.db"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATABASE = os.path.join(BASE_DIR, "database.db")
 
 ROOT_USUARIO = "root"
 ROOT_SENHA = "root"
@@ -73,6 +75,7 @@ def verificar_configuracoes():
         faltando.append("WEATHER_API_KEY")
 
     if faltando:
+
         print()
         print("=" * 60)
         print("ERRO: configurações ausentes no arquivo .env")
@@ -92,6 +95,7 @@ def verificar_configuracoes():
 def conectar_banco():
 
     conn = sqlite3.connect(DATABASE)
+
     conn.row_factory = sqlite3.Row
 
     return conn
@@ -119,56 +123,86 @@ def criar_banco():
     # Migração para bancos antigos
     # --------------------------------------------------------
 
-    cursor.execute("PRAGMA table_info(usuarios)")
+    cursor.execute(
+        "PRAGMA table_info(usuarios)"
+    )
 
     colunas = [
         linha["name"]
         for linha in cursor.fetchall()
     ]
 
-    # CORREÇÃO PRINCIPAL:
-    # adiciona a coluna nome caso o banco antigo não tenha
     if "nome" not in colunas:
 
         try:
+
             cursor.execute(
                 "ALTER TABLE usuarios ADD COLUMN nome TEXT"
             )
 
-            print("Coluna 'nome' adicionada ao banco.")
-
         except sqlite3.OperationalError:
+
             pass
 
     if "usuario" not in colunas:
 
         try:
+
             cursor.execute(
                 "ALTER TABLE usuarios ADD COLUMN usuario TEXT"
             )
 
         except sqlite3.OperationalError:
+
             pass
 
     if "senha" not in colunas:
 
         try:
+
             cursor.execute(
                 "ALTER TABLE usuarios ADD COLUMN senha TEXT"
             )
 
         except sqlite3.OperationalError:
+
             pass
 
     if "spotify_id" not in colunas:
 
         try:
+
             cursor.execute(
                 "ALTER TABLE usuarios ADD COLUMN spotify_id TEXT"
             )
 
         except sqlite3.OperationalError:
+
             pass
+
+    if "data_cadastro" not in colunas:
+
+        try:
+
+            cursor.execute(
+                "ALTER TABLE usuarios ADD COLUMN data_cadastro "
+                "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+            )
+
+        except sqlite3.OperationalError:
+
+            pass
+
+    # --------------------------------------------------------
+    # Contas antigas que não tinham nome
+    # --------------------------------------------------------
+
+    cursor.execute("""
+        UPDATE usuarios
+        SET nome = usuario
+        WHERE nome IS NULL
+           OR TRIM(nome) = ''
+    """)
 
     conn.commit()
     conn.close()
@@ -214,7 +248,10 @@ def obter_usuario_por_login(usuario):
     return resultado
 
 
-def atualizar_spotify_usuario(usuario_id, spotify_id):
+def atualizar_spotify_usuario(
+    usuario_id,
+    spotify_id
+):
 
     conn = conectar_banco()
 
@@ -224,7 +261,10 @@ def atualizar_spotify_usuario(usuario_id, spotify_id):
         SET spotify_id = ?
         WHERE id = ?
         """,
-        (spotify_id, usuario_id)
+        (
+            spotify_id,
+            usuario_id
+        )
     )
 
     conn.commit()
@@ -249,9 +289,12 @@ def criar_spotify_oauth():
 
 def obter_spotify():
 
-    token_info = session.get("token_info")
+    token_info = session.get(
+        "token_info"
+    )
 
     if not token_info:
+
         return None
 
     oauth = criar_spotify_oauth()
@@ -268,7 +311,10 @@ def obter_spotify():
 
         except Exception:
 
-            session.pop("token_info", None)
+            session.pop(
+                "token_info",
+                None
+            )
 
             return None
 
@@ -295,7 +341,10 @@ def index():
     )
 
 
-@app.route("/cadastro", methods=["GET", "POST"])
+@app.route(
+    "/cadastro",
+    methods=["GET", "POST"]
+)
 def cadastro():
 
     if request.method == "POST":
@@ -320,7 +369,7 @@ def cadastro():
             ""
         )
 
-        if not nome or not usuario or not senha or not confirmar:
+        if not nome or not usuario or not senha:
 
             return render_template(
                 "cadastro.html",
@@ -403,43 +452,78 @@ def cadastro():
     )
 
 
-@app.route("/login", methods=["GET", "POST"])
+@app.route(
+    "/login",
+    methods=["GET", "POST"]
+)
 def login():
 
     if request.method == "GET":
-        return render_template("login.html")
 
-    usuario = request.form.get("usuario", "").strip()
-    senha = request.form.get("senha", "")
+        return render_template(
+            "login.html"
+        )
+
+    usuario = request.form.get(
+        "usuario",
+        ""
+    ).strip()
+
+    senha = request.form.get(
+        "senha",
+        ""
+    )
 
     if not usuario or not senha:
+
         return render_template(
             "login.html",
-            erro="Preencha usuário e senha."
+            erro="Informe usuário e senha."
         )
 
-    usuario_db = obter_usuario_por_login(usuario)
+    usuario_db = obter_usuario_por_login(
+        usuario
+    )
 
     if not usuario_db:
+
         return render_template(
             "login.html",
             erro="Usuário ou senha incorretos."
         )
 
-    if not check_password_hash(usuario_db["senha"], senha):
+    senha_hash = usuario_db["senha"]
+
+    if not senha_hash:
+
+        return render_template(
+            "login.html",
+            erro="Essa conta precisa ser cadastrada novamente."
+        )
+
+    if not check_password_hash(
+        senha_hash,
+        senha
+    ):
+
         return render_template(
             "login.html",
             erro="Usuário ou senha incorretos."
         )
+
+    session.clear()
 
     session["usuario_id"] = usuario_db["id"]
-    session["usuario"] = usuario_db["usuario"]
-    session["nome_sintonia"] = usuario_db["nome"]
 
-    if usuario_db["spotify_id"]:
-        return redirect(url_for("dashboard"))
+    session["nome_sintonia"] = (
+        usuario_db["nome"]
+        or usuario_db["usuario"]
+    )
 
-    return redirect(url_for("spotify_login"))
+    return redirect(
+        url_for("spotify_login")
+    )
+
 
 # ============================================================
 # LOGOUT DO SINTONIA
@@ -592,6 +676,7 @@ def dashboard():
 def normalizar_texto(texto):
 
     if not texto:
+
         return ""
 
     texto = unicodedata.normalize(
@@ -602,9 +687,7 @@ def normalizar_texto(texto):
     texto = "".join(
         caractere
         for caractere in texto
-        if not unicodedata.combining(
-            caractere
-        )
+        if not unicodedata.combining(caractere)
     )
 
     return texto.lower().strip()
@@ -764,6 +847,7 @@ def similaridade(
 ):
 
     a = normalizar_texto(a)
+
     b = normalizar_texto(b)
 
     return SequenceMatcher(
@@ -785,6 +869,10 @@ def encontrar_artista(
         return None
 
     candidatos = []
+
+    # --------------------------------------------------------
+    # Busca exata por artista
+    # --------------------------------------------------------
 
     consultas = [
         f'artist:"{nome_digitado}"',
@@ -821,6 +909,10 @@ def encontrar_artista(
                 e
             )
 
+    # --------------------------------------------------------
+    # Remove duplicados
+    # --------------------------------------------------------
+
     unicos = {}
 
     for artista in candidatos:
@@ -845,6 +937,10 @@ def encontrar_artista(
         nome_digitado
     )
 
+    # --------------------------------------------------------
+    # Correspondência exata
+    # --------------------------------------------------------
+
     for artista in candidatos:
 
         nome = artista.get(
@@ -857,6 +953,10 @@ def encontrar_artista(
         ) == nome_normalizado:
 
             return artista
+
+    # --------------------------------------------------------
+    # Correspondência por similaridade
+    # --------------------------------------------------------
 
     melhor = None
     melhor_nota = 0
@@ -878,7 +978,10 @@ def encontrar_artista(
             melhor_nota = nota
             melhor = artista
 
-    if melhor and melhor_nota >= 0.60:
+    if (
+        melhor
+        and melhor_nota >= 0.60
+    ):
 
         return melhor
 
@@ -904,8 +1007,11 @@ def buscar_musicas_do_artista(
         return []
 
     musicas = []
+
     ids_adicionados = set()
 
+    # Spotify permite no máximo 10 resultados
+    # por busca neste fluxo.
     offsets = [
         0,
         10,
@@ -966,7 +1072,9 @@ def buscar_musicas_do_artista(
             )
 
             pertence = any(
-                artista_faixa.get("id") == artista_id
+                artista_faixa.get(
+                    "id"
+                ) == artista_id
                 for artista_faixa in artistas_faixa
             )
 
@@ -1091,6 +1199,7 @@ def buscar_musicas_por_humor(
     )
 
     musicas = []
+
     ids_adicionados = set()
 
     for termo in termos:
@@ -1194,6 +1303,10 @@ def criar_playlist_spotify(
         "Content-Type": "application/json"
     }
 
+    # --------------------------------------------------------
+    # CRIAR PLAYLIST
+    # --------------------------------------------------------
+
     resposta = requests.post(
         "https://api.spotify.com/v1/me/playlists",
         headers=headers,
@@ -1232,6 +1345,10 @@ def criar_playlist_spotify(
             "O Spotify não retornou o ID da playlist."
         )
 
+    # --------------------------------------------------------
+    # ADICIONAR MÚSICAS
+    # --------------------------------------------------------
+
     for inicio in range(
         0,
         len(uris),
@@ -1243,7 +1360,10 @@ def criar_playlist_spotify(
         ]
 
         resposta_itens = requests.post(
-            f"https://api.spotify.com/v1/playlists/{playlist_id}/items",
+            (
+                f"https://api.spotify.com/v1/"
+                f"playlists/{playlist_id}/items"
+            ),
             headers=headers,
             json={
                 "uris": bloco
@@ -1263,8 +1383,38 @@ def criar_playlist_spotify(
             )
 
             raise RuntimeError(
-                "A playlist foi criada, mas não foi possível adicionar as músicas."
+                "A playlist foi criada, mas não foi "
+                "possível adicionar as músicas."
             )
+
+    # --------------------------------------------------------
+    # CORREÇÃO DO ERRO external_urls
+    # --------------------------------------------------------
+    #
+    # O resultado.html utiliza:
+    #
+    # playlist.external_urls.spotify
+    #
+    # Portanto garantimos que essa estrutura exista.
+    # --------------------------------------------------------
+
+    if not isinstance(
+        playlist.get("external_urls"),
+        dict
+    ):
+
+        playlist["external_urls"] = {}
+
+    if not playlist[
+        "external_urls"
+    ].get("spotify"):
+
+        playlist[
+            "external_urls"
+        ]["spotify"] = (
+            f"https://open.spotify.com/playlist/"
+            f"{playlist_id}"
+        )
 
     return playlist
 
@@ -1322,6 +1472,10 @@ def gerar():
             mensagem="Selecione um humor."
         )
 
+    # --------------------------------------------------------
+    # CLIMA
+    # --------------------------------------------------------
+
     clima = obter_clima(
         cidade
     )
@@ -1335,6 +1489,10 @@ def gerar():
                 "ou consultar o clima."
             )
         )
+
+    # --------------------------------------------------------
+    # BUSCA DE MÚSICAS
+    # --------------------------------------------------------
 
     artista = None
 
@@ -1370,7 +1528,9 @@ def gerar():
                 )
             )
 
-        nome_artista = artista["name"]
+        nome_artista = artista[
+            "name"
+        ]
 
     else:
 
@@ -1392,7 +1552,13 @@ def gerar():
 
         nome_artista = ""
 
-    musicas = musicas[:30]
+    # --------------------------------------------------------
+    # LIMITA A PLAYLIST
+    # --------------------------------------------------------
+
+    musicas = musicas[
+        :30
+    ]
 
     tracks_uris = []
 
@@ -1412,8 +1578,14 @@ def gerar():
 
         return render_template(
             "erro.html",
-            mensagem="Nenhuma música válida foi encontrada."
+            mensagem=(
+                "Nenhuma música válida foi encontrada."
+            )
         )
+
+    # --------------------------------------------------------
+    # NOME DA PLAYLIST
+    # --------------------------------------------------------
 
     nome_playlist = (
         f"Sintonia - {humor.capitalize()}"
@@ -1434,8 +1606,13 @@ def gerar():
         descricao = (
             f"Playlist do Sintonia com músicas "
             f"de {nome_artista}, baseada no humor "
-            f"{humor} e no clima de {clima['cidade']}."
+            f"{humor} e no clima de "
+            f"{clima['cidade']}."
         )
+
+    # --------------------------------------------------------
+    # CRIA PLAYLIST
+    # --------------------------------------------------------
 
     try:
 
@@ -1463,6 +1640,10 @@ def gerar():
             )
         )
 
+    # --------------------------------------------------------
+    # INFORMAÇÕES DAS MÚSICAS
+    # --------------------------------------------------------
+
     musicas_resultado = []
 
     for faixa in musicas:
@@ -1488,6 +1669,10 @@ def gerar():
                 "uri"
             )
         })
+
+    # --------------------------------------------------------
+    # DEBUG NO TERMINAL
+    # --------------------------------------------------------
 
     print()
     print("=" * 60)
@@ -1531,12 +1716,28 @@ def gerar():
             f"{faixa['artista']}"
         )
 
-    print("=" * 60)
+    print(
+        "=" * 60
+    )
     print()
+
+    # --------------------------------------------------------
+    # URL DA PLAYLIST
+    # --------------------------------------------------------
+
+    playlist_url = (
+        playlist
+        .get("external_urls", {})
+        .get("spotify")
+        or
+        f"https://open.spotify.com/playlist/"
+        f"{playlist.get('id', '')}"
+    )
 
     return render_template(
         "resultado.html",
         playlist=playlist,
+        playlist_url=playlist_url,
         musicas=musicas_resultado,
         clima=clima,
         humor=humor,
@@ -1554,7 +1755,9 @@ def gerar():
 )
 def root_login():
 
-    if session.get("root_logado"):
+    if session.get(
+        "root_logado"
+    ):
 
         return redirect(
             url_for("root_painel")
@@ -1577,7 +1780,9 @@ def root_login():
             and senha == ROOT_SENHA
         ):
 
-            session["root_logado"] = True
+            session[
+                "root_logado"
+            ] = True
 
             return redirect(
                 url_for("root_painel")
@@ -1585,7 +1790,9 @@ def root_login():
 
         return render_template(
             "root_login.html",
-            erro="Usuário ou senha incorretos."
+            erro=(
+                "Usuário ou senha incorretos."
+            )
         )
 
     return render_template(
@@ -1593,10 +1800,14 @@ def root_login():
     )
 
 
-@app.route("/root/painel")
+@app.route(
+    "/root/painel"
+)
 def root_painel():
 
-    if not session.get("root_logado"):
+    if not session.get(
+        "root_logado"
+    ):
 
         return redirect(
             url_for("root_login")
@@ -1625,16 +1836,21 @@ def root_painel():
     )
 
 
-@app.route("/root/exportar")
+@app.route(
+    "/root/exportar"
+)
 def root_exportar():
 
-    if not session.get("root_logado"):
+    if not session.get(
+        "root_logado"
+    ):
 
         return redirect(
             url_for("root_login")
         )
 
     conn = conectar_banco()
+
     cursor = conn.cursor()
 
     tabelas = cursor.execute(
@@ -1650,20 +1866,27 @@ def root_exportar():
 
     for tabela in tabelas:
 
-        nome_tabela = tabela["name"]
+        nome_tabela = tabela[
+            "name"
+        ]
 
         linhas = cursor.execute(
             f'SELECT * FROM "{nome_tabela}"'
         ).fetchall()
 
-        banco[nome_tabela] = [
+        banco[
+            nome_tabela
+        ] = [
             dict(linha)
             for linha in linhas
         ]
 
     conn.close()
 
-    arquivo = "sintonia_database.json"
+    arquivo = os.path.join(
+        BASE_DIR,
+        "sintonia_database.json"
+    )
 
     with open(
         arquivo,
@@ -1687,7 +1910,9 @@ def root_exportar():
     )
 
 
-@app.route("/root/logout")
+@app.route(
+    "/root/logout"
+)
 def root_logout():
 
     session.pop(
@@ -1717,7 +1942,9 @@ def pagina_nao_encontrada(error):
 def erro_servidor(error):
 
     print()
-    print("ERRO 500:")
+    print(
+        "ERRO 500:"
+    )
     print(error)
     print()
 

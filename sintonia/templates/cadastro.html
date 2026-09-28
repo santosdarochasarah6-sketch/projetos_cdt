@@ -20,11 +20,9 @@ Cadastro | Sintonia
     <p class="error-message">
         {{ erro }}
     </p>
-
     {% endif %}
 
     <form
-        action="{{ url_for('cadastro') }}"
         method="POST"
         class="form"
     >
@@ -87,10 +85,13 @@ Cadastro | Sintonia
     </form>
 
     <p class="switch-link">
+
         Já possui uma conta?
+
         <a href="{{ url_for('login') }}">
             Voltar para o login
         </a>
+
     </p>
 
 </section>

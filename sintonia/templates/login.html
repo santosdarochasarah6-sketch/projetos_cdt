@@ -17,15 +17,9 @@ Entrar | Sintonia
         Sua música acompanha o seu momento.
     </p>
 
-    {% if erro %}
-    <p class="error-message">
-        {{ erro }}
-    </p>
-    {% endif %}
 
     <form
         method="POST"
-        action="{{ url_for('login') }}"
         class="form"
     >
 
